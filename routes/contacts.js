@@ -14,7 +14,10 @@ const connection = mysql.createConnection({
 connection.connect();
 
 /**
- * 
+ * Get a call list 
+ * The call list is generated from all contacts that include a home phone.  
+ * It is sorted first by the contact’s last name, then by first name, 
+ * and returned as an array of objects.
  */
 router.get('/call-list', (req, res, next) => {
   connection.query('select * from contacts as c', function (err, rows, fields) {
@@ -24,10 +27,10 @@ router.get('/call-list', (req, res, next) => {
     rows.forEach(item => {
       let c = JSON.parse(item.data);
       let idx = c.phone.findIndex(element => element.type === 'home');
-      if(idx > -1) {
+      if (idx > -1) {
         let cl = {};
         // We only want the name and home phone number.
-        extend(cl,{'name': c.name},{'phone' : c.phone[idx].number});
+        extend(cl, { 'name': c.name }, { 'phone': c.phone[idx].number });
         contacts.push(cl);
       }
     });
@@ -42,7 +45,7 @@ router.get('/call-list', (req, res, next) => {
       if (lastName1 > lastName2) {
         return 1;
       }
-      
+
       if (lastName1 === lastName2) {
         let firstName1 = a.name.first.toLowerCase();
         let firstName2 = b.name.first.toLowerCase();
@@ -60,19 +63,19 @@ router.get('/call-list', (req, res, next) => {
 });
 
 /**
- * 
+ * Get a specific contact
  */
 router.get('/:id', (req, res, next) => {
   connection.query('select * from contacts as c where id = ' + req.params.id, function (err, row, fields) {
     if (err) throw err;
     let contact = {};
     contact.id = row[0].id;
-    res.send(extend(contact,JSON.parse(row[0].data)));
+    res.send(extend(contact, JSON.parse(row[0].data)));
   });
 });
 
 /**
- * 
+ * List all contacts
  */
 router.get('/', (req, res, next) => {
   connection.query('select * from contacts as c', function (err, rows, fields) {
@@ -82,7 +85,7 @@ router.get('/', (req, res, next) => {
     rows.forEach(item => {
       let c = {};
       c.id = item.id;
-      contacts.push(extend(c,JSON.parse(item.data)));
+      contacts.push(extend(c, JSON.parse(item.data)));
     });
     res.send(contacts);
 
@@ -90,32 +93,42 @@ router.get('/', (req, res, next) => {
 });
 
 /**
- * 
+ * Create a new contact
  */
 router.post('/', (req, res, next) => {
   let contact = req.body;
-  let queryString = "insert into contacts (data) values ('" + JSON.stringify(contact) + "')"; 
-  connection.query(queryString, function (err, result) {
-    if (err) throw err;
-    res.send("{'id':" + result.insertId + "}");
-  })
-  
+  if (validContact(contact)) {
+    let queryString = "insert into contacts (data) values ('" + JSON.stringify(contact) + "')";
+    connection.query(queryString, function (err, result) {
+      if (err) throw err;
+      res.send("{'id':" + result.insertId + "}");
+    })
+  }
+  else {
+    res.status(400).send('Malformed data');
+  }
 });
 
 /**
- * 
+ * Update a contact.
  */
 router.put('/:id', function (req, res, next) {
   let contact = req.body;
-  let queryString = "update contacts set data = '" + JSON.stringify(contact) + "' where id = " + req.params.id; 
-  connection.query(queryString, function (err, result) {
-    if (err) throw err;
-    res.send("{'id':" + req.params.id + "}");
-  })
+  if (validContact(contact)) {
+    let queryString = "update contacts set data = '" + JSON.stringify(contact) + "' where id = " + req.params.id;
+    console.log(queryString);
+    connection.query(queryString, function (err, result) {
+      if (err) throw err;
+      res.send("{'id':" + req.params.id + "}");
+    })
+  }
+  else {
+    res.status(400).send('Malformed data');
+  }
 });
 
 /**
- * 
+ * delete a specific contact.
  */
 router.delete('/:id', (req, res, next) => {
   connection.query('delete from contacts where id = ' + req.params.id, function (err, row, fields) {
@@ -125,6 +138,21 @@ router.delete('/:id', (req, res, next) => {
     res.send("{'id':" + req.params.id + "}");  // deleted ID.
   });
 });
+
+/**
+ * Perform minimal validation on a contact. In this case just the phone number.
+ * @param {*} contact 
+ */
+function validContact(contact) {
+  if (typeof contact !== "undefined" && typeof contact.phone !== "undefined") {
+    return (contact.phone.find(element => element.type === 'home') ||
+      contact.phone.find(element => element.type === 'work') ||
+      contact.phone.find(element => element.type === 'mobile'))
+  }
+  else {
+    return false;
+  }
+}
 
 
 module.exports = router;
